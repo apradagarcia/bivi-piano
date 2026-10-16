@@ -7,3 +7,6 @@ web/*.wav
 r*.json
 heldout.json
 node_modules/
+lab/shot.png
+lab/listener-lab.html
+heldout*.json

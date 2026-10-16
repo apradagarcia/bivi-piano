@@ -66,6 +66,16 @@ for (const cond of conds) {
       events.forEach((e, i) => { const m = e.notes[0], k = `${cond}|${m}`; (report.perNote[k] ??= { cond, midi: m, n: 0, hit: 0 }).n++; if (hitFor(ok.hits, events, i)) report.perNote[k].hit++; });
       t.mpmAccuracy = ok.guesses.filter((g, i) => g.midi !== null && (g.midi - events[i].notes[0]) % 12 === 0).length / events.length;
       t.mpmExact = ok.guesses.filter((g, i) => g.midi === events[i].notes[0]).length / events.length;
+      // held note: right after each strike is accepted, expect the SAME note again. Any accept before the
+      // key is pressed again is the app advancing on its own.
+      {
+        // like Twinkle's C-C: the note is the target, gets accepted, and then is the target again
+        const base = scheduleFor(events), sched = [];
+        events.forEach((e, i) => { sched.push({ ...base[i], idx: 1000 + i }); sched.push({ at: e.start + 0.15, notes: e.notes, idx: i }); });
+        const r = drive(audio, sched);
+        const early = events.filter((e, i) => r.hits.some(h => h.idx === i && h.time < (events[i + 1]?.start ?? Infinity) - 0.03)).length;
+        t.falseAccepts['held note retrigger'] = early / events.length;
+      }
       for (const [label, d] of [['semitone below', -1], ['semitone above', 1], ['octave below', -12], ['octave above', 12]]) {
         const r = drive(audio, scheduleFor(events, n => n.map(x => x + d)));
         t.falseAccepts[label] = events.filter((_, i) => hitFor(r.hits, events, i)).length / events.length;

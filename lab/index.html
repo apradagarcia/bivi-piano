@@ -1,0 +1,587 @@
+<meta charset="utf-8">
+<title>Listener Lab</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a test bench. Source picker on top, then the stage (target strip, keyboard, live log), then the scorecard. */
+:root{
+  --bg:#fbf4f6; --surface:#ffffff; --ink:#2b2230; --muted:#7a6b74; --line:#ecdde3;
+  --rose:#c2577a; --rose-soft:#f7e3ea; --gold:#a8785c; --sage:#5f8a6a; --sage-soft:#e2efe5; --bad:#c44848; --bad-soft:#f8e0e0;
+  --white-key:#fffdfd; --black-key:#2b2230; --key-edge:#d9c8cf;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"Atkinson Hyperlegible",ui-sans-serif,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#1c1619; --surface:#271e23; --ink:#f4e9ee; --muted:#b09ea8; --line:#3a2d34;
+  --rose:#e98aaa; --rose-soft:#43262f; --gold:#d6a98a; --sage:#93c39f; --sage-soft:#22352a; --bad:#f07c7c; --bad-soft:#4a2525;
+  --white-key:#efe6ea; --black-key:#120d10; --key-edge:#8f7f87; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#1c1619; --surface:#271e23; --ink:#f4e9ee; --muted:#b09ea8; --line:#3a2d34;
+  --rose:#e98aaa; --rose-soft:#43262f; --gold:#d6a98a; --sage:#93c39f; --sage-soft:#22352a; --bad:#f07c7c; --bad-soft:#4a2525;
+  --white-key:#efe6ea; --black-key:#120d10; --key-edge:#8f7f87; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1000px;margin:0 auto;padding-inline:16px;padding-block:20px 40px;display:flex;flex-direction:column;gap:18px}
+h1{font-family:var(--display);font-weight:800;font-size:1.9rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h1 span{color:var(--rose)}
+.lede{color:var(--muted);margin:4px 0 0;max-width:68ch}
+h2{font-family:var(--display);font-weight:600;font-size:1.05rem;margin:0}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--rose);border-color:var(--rose);color:#fff;font-weight:700}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.demos{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+.demo{font:inherit;text-align:left;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:4px;min-width:0}
+.demo:hover,.demo:focus-visible{border-color:var(--rose)}
+.demo b{font-family:var(--display);font-weight:600}
+.demo small{color:var(--muted)}
+.demo .room{font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--gold)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+select,button.btn,input[type=file]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+button.btn{cursor:pointer}
+button.primary{background:var(--rose);border-color:var(--rose);color:#fff;font-weight:700}
+button:focus-visible,select:focus-visible,input:focus-visible,.tab:focus-visible{outline:3px solid var(--rose);outline-offset:2px}
+label{color:var(--muted);font-size:.9rem}
+.note{font-size:.88rem;color:var(--muted);max-width:70ch}
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px}
+@media (max-width:760px){.stage{grid-template-columns:1fr}}
+.main{min-width:0;display:flex;flex-direction:column;gap:12px}
+.status{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.status .big{font-family:var(--display);font-weight:800;font-size:2.2rem;line-height:1}
+.status .sub{color:var(--muted)}
+.strip{display:flex;gap:6px;overflow-x:auto;padding:4px 2px 8px}
+.chip{flex:0 0 auto;padding:5px 9px;border-radius:9px;border:1px solid var(--line);font-family:var(--mono);font-size:.8rem;color:var(--muted);white-space:nowrap}
+.chip.cur{border-color:var(--rose);color:var(--ink);background:var(--rose-soft);font-weight:700}
+.chip.done{border-color:var(--sage);background:var(--sage-soft);color:var(--ink)}
+.kb-wrap{overflow-x:auto}
+.kb{position:relative;height:150px;min-width:520px;display:flex;user-select:none}
+.wk{flex:1;background:var(--white-key);border:1px solid var(--key-edge);border-radius:0 0 7px 7px;margin-right:-1px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;font-size:.62rem;color:#7a6b74;transition:background .1s}
+.bk{position:absolute;top:0;height:60%;background:var(--black-key);border-radius:0 0 5px 5px;z-index:2;transition:background .1s}
+.wk.target{background:#f9d3df;box-shadow:inset 0 -5px 0 var(--rose)}.bk.target{background:#c2577a}
+.wk.hit{background:#cfe8d5}.bk.hit{background:#5f8a6a}
+.wk.wrong{background:#f6caca}.bk.wrong{background:#c44848}
+.side{min-width:0;display:flex;flex-direction:column;gap:8px}
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:330px;overflow-y:auto}
+.log li{border-radius:10px;padding:7px 10px;font-size:.88rem;background:var(--bg);border:1px solid var(--line)}
+.log li.ok{background:var(--sage-soft);border-color:transparent}
+.log li.bad{background:var(--bad-soft);border-color:transparent}
+.log li time{font-family:var(--mono);font-size:.75rem;color:var(--muted);margin-right:6px}
+.score{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:560px){.score{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.stat{border-top:2px solid var(--line);padding-top:6px}
+.stat b{display:block;font-family:var(--mono);font-size:1.3rem;font-variant-numeric:tabular-nums}
+.stat span{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.verdict{border-radius:12px;padding:12px 14px;background:var(--rose-soft)}
+.meter{height:6px;border-radius:3px;background:var(--line);overflow:hidden;width:140px}
+.meter i{display:block;height:100%;width:0;background:var(--rose);transition:width .08s}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Bivi piano · step 1 test bench</div>
+    <h1>Listener <span>Lab</span></h1>
+    <p class="lede">Watch the note detector work before Bivi's recordings arrive. It's the same code the app will use: it waits for each target note, accepts it when it hears it, and ignores wrong notes, the fan and the TV.</p>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-demo" aria-selected="true">Demo recordings</button>
+    <button class="tab" role="tab" id="t-file" aria-selected="false">Your recording</button>
+    <button class="tab" role="tab" id="t-mic" aria-selected="false">Live mic</button>
+  </div>
+
+  <section class="panel" id="p-demo">
+    <h2>Pick a demo</h2>
+    <div class="demos" id="demos"><p class="note">Loading demos…</p></div>
+    <p class="note">Recorded from a real grand piano, then made to sound like the CT-S1's small speakers heard by a phone in a room. Turn your sound on.</p>
+  </section>
+
+  <section class="panel" id="p-file" hidden>
+    <h2>Test any piano recording</h2>
+    <p class="note">Record a piano in Voice Memos (a real piano, a piano app, or a YouTube piano video) and pick the file here. Choose what was played, or "Just listen" to see which notes it hears.</p>
+    <div class="row">
+      <input type="file" id="file" accept="audio/*,.m4a,.mp3,.wav">
+      <label for="song-file">Played:</label>
+      <select id="song-file"></select>
+      <label><input type="checkbox" id="play-file" checked> Play while testing</label>
+      <button class="btn primary" id="run-file">Test it</button>
+    </div>
+  </section>
+
+  <section class="panel" id="p-mic" hidden>
+    <h2>Play live</h2>
+    <div class="row">
+      <label for="song-mic">Song:</label>
+      <select id="song-mic"></select>
+      <button class="btn primary" id="run-mic">Start listening</button>
+      <span class="meter" aria-label="mic level"><i id="lvl"></i></span>
+    </div>
+    <p class="note" id="mic-note">Play a real piano or keyboard, or a piano app on another phone held near this device.</p>
+  </section>
+
+  <section class="panel">
+    <div class="stage">
+      <div class="main">
+        <div class="status">
+          <span class="eyebrow">Waiting for</span>
+          <span class="big" id="big">–</span>
+          <span class="sub" id="sub">Pick a demo to start</span>
+        </div>
+        <div class="strip" id="strip"></div>
+        <div class="kb-wrap"><div class="kb" id="kb"></div></div>
+      </div>
+      <div class="side">
+        <span class="eyebrow">What it heard</span>
+        <ol class="log" id="log"></ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="scorecard" hidden>
+    <h2>Result</h2>
+    <div class="score">
+      <div class="stat"><b id="sc-done">–</b><span>Targets completed</span></div>
+      <div class="stat"><b id="sc-wrong">–</b><span>Mistakes ignored</span></div>
+      <div class="stat"><b id="sc-false">–</b><span>Wrong notes accepted</span></div>
+      <div class="stat"><b id="sc-delay">–</b><span>Median delay</span></div>
+    </div>
+    <div class="verdict" id="verdict"></div>
+  </section>
+</div>
+
+<script>
+// Piano note listener. Pure JS, no dependencies, runs inside an AudioWorklet and in Node.
+//
+// Two jobs:
+//  1. Expected-note matching (gameplay): the app always knows which note or chord comes next,
+//     so instead of guessing "what is playing", we ask "are THESE notes being struck right now?"
+//     Each expected note is scored by how far its harmonics rise above the room noise and above
+//     the leakage of louder nearby partials, checked against its semitone neighbours and octaves.
+//     A note only counts when its own harmonics jump (a fresh key strike), so ringing notes,
+//     fans and voices do not.
+//  2. McLeod Pitch Method (MPM) for single notes: used to say which wrong note was played.
+
+const midiToHz = m => 440 * Math.pow(2, (m - 69) / 12);
+
+// ---------- FFT (in place, radix 2) ----------
+function makeFFT(n) {
+  const levels = Math.log2(n) | 0, rev = new Uint32Array(n), cos = new Float64Array(n / 2), sin = new Float64Array(n / 2);
+  for (let i = 0; i < n; i++) { let r = 0; for (let b = 0; b < levels; b++) r |= ((i >> b) & 1) << (levels - 1 - b); rev[i] = r; }
+  for (let i = 0; i < n / 2; i++) { cos[i] = Math.cos(2 * Math.PI * i / n); sin[i] = Math.sin(2 * Math.PI * i / n); }
+  return function fft(re, im) {
+    for (let i = 0; i < n; i++) { const j = rev[i]; if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+    for (let size = 2; size <= n; size <<= 1) {
+      const half = size >> 1, step = n / size;
+      for (let i = 0; i < n; i += size) for (let j = 0, k = 0; j < half; j++, k += step) {
+        const a = i + j, b = a + half, tr = re[b] * cos[k] + im[b] * sin[k], ti = -re[b] * sin[k] + im[b] * cos[k];
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+      }
+    }
+  };
+}
+
+// ---------- McLeod Pitch Method ----------
+function mpm(buf, sr, minHz = 60, maxHz = 2200) {
+  const n = buf.length, maxLag = Math.min(n >> 1, Math.ceil(sr / minHz)), minLag = Math.floor(sr / maxHz);
+  const nsdf = new Float32Array(maxLag + 1);
+  for (let tau = 0; tau <= maxLag; tau++) {
+    let acf = 0, m = 0;
+    for (let i = 0; i < n - tau; i++) { acf += buf[i] * buf[i + tau]; m += buf[i] * buf[i] + buf[i + tau] * buf[i + tau]; }
+    nsdf[tau] = m > 0 ? 2 * acf / m : 0;
+  }
+  const peaks = []; let pos = false, best = -1, bestV = -1;
+  for (let t = Math.max(1, minLag); t < maxLag; t++) {
+    if (nsdf[t] > 0 && nsdf[t - 1] <= 0) { pos = true; best = -1; bestV = -1; }
+    if (pos && nsdf[t] > bestV) { bestV = nsdf[t]; best = t; }
+    if (pos && nsdf[t] <= 0 && nsdf[t - 1] > 0) { if (best > 0) peaks.push([best, bestV]); pos = false; }
+  }
+  if (!peaks.length) return { hz: -1, clarity: 0 };
+  const top = Math.max(...peaks.map(p => p[1])), pick = peaks.find(p => p[1] >= 0.9 * top);
+  const t = pick[0], a = nsdf[t - 1], b = nsdf[t], c = nsdf[t + 1] ?? b, d = a - 2 * b + c, shift = d ? 0.5 * (a - c) / d : 0;
+  return { hz: sr / (t + shift), clarity: pick[1] };
+}
+
+// Hann window leakage envelope, dB below a peak, at a distance of d bins
+const hannLeak = d => d < 1.5 ? 0 : 20 * Math.log10(1 / (Math.PI * d * (d * d - 1)));
+
+// ---------- Listener ----------
+const DEFAULTS = {
+  n: 2048,            // analysis window (43 ms at 48 kHz)
+  hop: 256,           // 5.3 ms between analyses
+  harmonics: 8,
+  maxHz: 7000,
+  cents: 30,          // tolerance around each harmonic (widened for upper partials)
+  topK: 3,            // a note is scored on its strongest harmonics
+  // thresholds below were set from measured score distributions (eval/diag.mjs), not guessed
+  onThr: 12,          // dB, single note (right notes measured 15-40, room noise under 10)
+  chordThr: 9,        // dB, each note of a chord
+  neighbourMargin: 6, // dB the expected note must beat its semitone neighbours by
+  oddThr: 30,         // dB at f, 3f or 5f (right notes ~40, octave-above-played under 25)
+  lowerOctThr: 8,     // dB at 1.5f, 2.5f, 3.5f (right notes ~0, octave-below-played median 23)
+  riseDb: 5,          // a strike = the note's partials rise this far above their loudest level
+  riseLookMs: 250,    //   over the last 250 ms
+  riseGapMs: 20,      //   (ignoring the most recent 20 ms, the attack itself)
+  releaseDb: 15,      // or: the level fell this far (key released) within the last 250 ms...
+  reriseDb: 10,       // ...and has risen this much again (key struck)
+  jumpDb: 8,          // new pitch: or a jump of this much within jumpMs
+  jumpMs: 45,
+  confirmHops: 3,
+  driftCents: 12,     // single notes: the strongest partial must hold its pitch (voices glide, strings do not)
+  freshMs: 150,       // after the jump, the note must be confirmed within this long
+  chordWindowMs: 200, // all chord notes must be struck within this long of each other
+  leakMargin: 6,      // dB above the estimated leakage of louder partials
+  range: 40,          // dB: partials further below the loudest one are ignored
+};
+
+class NoteListener {
+  constructor(sampleRate, opts = {}) {
+    this.sr = sampleRate; this.o = { ...DEFAULTS, ...opts };
+    const { n } = this.o;
+    this.fft = makeFFT(n); this.re = new Float64Array(n); this.im = new Float64Array(n);
+    this.win = new Float64Array(n).map((_, i) => 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1)));
+    this.ring = new Float32Array(n); this.w = 0; this.filled = 0; this.sinceHop = 0;
+    this.db = new Float64Array(n / 2); this.floor = new Float64Array(n / 2).fill(NaN);
+    this.leak = []; for (let d = 0; d <= 24; d++) this.leak.push(hannLeak(d));
+    this.t = 0; this.frames = 0; this.frameMax = -1e9; this.expected = []; this.st = null;
+  }
+  setExpected(midis) {
+    this.expected = [...midis].sort((a, b) => a - b);
+    // a repeat (same target as the note just accepted) can only be a new strike after a key release
+    const repeat = !!this.lastHit && this.lastHit.join() === this.expected.join();
+    this.st = { notes: new Map(this.expected.map(m => [m, { hist: [], fresh: -1e9, confirm: 0, hit: null }])), done: false, repeat };
+  }
+  get time() { return this.t / this.sr; }
+
+  process(samples) {
+    const out = [], { n, hop } = this.o;
+    for (let i = 0; i < samples.length; i++) {
+      this.ring[this.w] = samples[i]; this.w = (this.w + 1) % n; this.t++;
+      if (this.filled < n) this.filled++;
+      if (++this.sinceHop >= hop && this.filled === n) { this.sinceHop = 0; this.analyse(out); }
+    }
+    return out;
+  }
+
+  analyse(out) {
+    const { n } = this.o, re = this.re, im = this.im;
+    for (let i = 0; i < n; i++) { re[i] = this.ring[(this.w + i) % n] * this.win[i]; im[i] = 0; }
+    this.fft(re, im);
+    let frameMax = -1e9;
+    for (let k = 0; k < n / 2; k++) {
+      const d = 10 * Math.log10(re[k] * re[k] + im[k] * im[k] + 1e-14), f = this.floor[k];
+      this.db[k] = d;
+      // noise floor = running average level of each bin while it is quiet. While a note sounds
+      // there (well above the average) it barely moves, so held notes do not erase themselves.
+      this.floor[k] = Number.isNaN(f) ? d : d < f + 10 ? f + (this.frames < 60 ? 0.15 : 0.02) * (d - f) : f + 0.003;
+      if (d > frameMax) frameMax = d;
+    }
+    this.frames++; this.frameMax = frameMax;
+    const s = this.st;
+    if (!s || s.done) return;
+    const now = this.time * 1000, chord = this.expected.length > 1, o = this.o;
+    for (const [m, ns] of s.notes) {
+      if (ns.hit !== null) continue;
+      // A strike = the note's partials get LOUDER than they have been at any point in the last quarter
+      // second. A fading note never does, even though it shimmers (detuned unison strings beat, so its
+      // level dips and recovers); a relative score was fooled by that and re-triggered held notes.
+      const { level } = this.noteScore(m), pos = this.lastF0;
+      let prevMax = -Infinity, older = false;
+      for (const [t, l] of ns.hist) if (now - t >= o.riseGapMs) { older = true; if (l > prevMax) prevMax = l; }
+      if (older && level - prevMax >= o.riseDb) ns.fresh = now;
+      // or, when the target repeats the note just played: the same key played again. The finger lifts first, so the sound drops sharply (key release)
+      // and then comes back. A held note only shimmers; its dips are much shallower than a release.
+      let dip = Infinity; for (const [, l] of ns.hist) if (l < dip) dip = l;
+      if (s.repeat && older && prevMax - dip >= o.releaseDb && level - dip >= o.reriseDb) ns.fresh = now;
+      // a new pitch cannot be confused with a held note, so a quick jump is also enough there
+      // (keeps soft notes audible when a TV raises the recent maximum)
+      if (!s.repeat) { let lo = Infinity; for (const [t, l] of ns.hist) if (now - t <= o.jumpMs && l < lo) lo = l; if (level - lo >= o.jumpDb) ns.fresh = now; }
+      ns.hist.push([now, level]); while (ns.hist.length && now - ns.hist[0][0] > o.riseLookMs) ns.hist.shift();
+      let ok = now - ns.fresh <= o.freshMs && this.notePresent(m, chord);
+      if (ok && !chord && ns.confirm > 0 && Math.abs(1200 * Math.log2(pos / ns.pos0)) > o.driftCents) ok = false;
+      if (ok && ns.confirm === 0) ns.pos0 = pos;
+      ns.confirm = ok ? ns.confirm + 1 : 0;
+      if (ns.confirm >= o.confirmHops) ns.hit = now;
+    }
+    // a chord note heard too long before the others is stale: let it be struck again
+    if (chord) for (const ns of s.notes.values()) if (ns.hit !== null && now - ns.hit > o.chordWindowMs) { ns.hit = null; ns.confirm = 0; }
+    const hits = [...s.notes.values()].map(x => x.hit);
+    if (hits.every(h => h !== null)) {
+      s.done = true; this.lastHit = this.expected.slice();
+      out.push({ type: 'hit', notes: this.expected.slice(), time: now / 1000, onset: Math.min(...hits) / 1000 });
+    }
+  }
+
+  // SNR (dB) of a spectral PEAK whose interpolated centre lies within +-cents of hz, measured
+  // against the louder of: the room noise floor, or leakage from stronger peaks nearby.
+  snrAt(hz, cents = this.o.cents) {
+    const { n, leakMargin } = this.o, b = hz * n / this.sr, db = this.db;
+    if (b >= n / 2 - 2 || b < 1) return 0;
+    const tol = Math.max(b * (Math.pow(2, cents / 1200) - 1), 0.22);
+    const lo = Math.max(1, Math.floor(b - tol - 1)), hi = Math.min(n / 2 - 2, Math.ceil(b + tol + 1));
+    let best = 0;
+    for (let k = lo; k <= hi; k++) {
+      const a = db[k - 1], c = db[k], d = db[k + 1];
+      if (c < a || c < d) continue;
+      const den = a - 2 * c + d, off = den ? 0.5 * (a - d) / den : 0;
+      if (Math.abs(k + off - b) > tol) continue;
+      const peak = c - 0.25 * (a - d) * off;
+      // reference: room noise (+3 dB), or 40 dB under the loudest partial, or leakage of louder peaks
+      let ref = Math.max(this.floor[k] + 3, this.frameMax - this.o.range);
+      for (let j = Math.max(1, k - 24); j <= Math.min(n / 2 - 1, k + 24); j++) {
+        const dist = Math.abs(j - k); if (dist < 2 || db[j] <= peak) continue;
+        const l = db[j] + this.leak[dist] + leakMargin; if (l > ref) ref = l;
+      }
+      const v = peak - ref; if (v > best) { best = v; this.lastPos = k + off; this.lastPeakDb = peak; }
+    }
+    return Math.min(60, best);
+  }
+
+  // loudest bin (dB) within +-cents of hz, whatever it contains
+  rawAt(hz, cents) {
+    const { n } = this.o, b = hz * n / this.sr;
+    if (b >= n / 2 - 2 || b < 1) return -120;
+    const tol = Math.max(b * (Math.pow(2, cents / 1200) - 1), 0.5);
+    let best = -1e9; for (let k = Math.max(1, Math.round(b - tol)); k <= Math.min(n / 2 - 2, Math.round(b + tol)); k++) if (this.db[k] > best) best = this.db[k];
+    return best;
+  }
+
+  noteScore(m) {
+    const f0 = midiToHz(m), { harmonics, maxHz, cents, topK } = this.o, v = [];
+    // piano strings are stiff, so upper partials run sharp: widen the window as h grows
+    let top = -1; const lv = [];
+    for (let h = 1; h <= harmonics && f0 * h < maxHz; h++) {
+      this.lastPos = 0; const x = this.snrAt(f0 * h, cents + 3 * h); v.push(x);
+      lv.push(this.rawAt(f0 * h, cents + 3 * h));
+      if (x > top && this.lastPos) { top = x; this.lastF0 = this.lastPos * this.sr / this.o.n / h; } // pitch implied by the strongest partial
+    }
+    v.sort((a, b) => b - a);
+    const k = Math.min(topK, v.length);
+    let sum = 0; for (let i = 0; i < k; i++) sum += v[i];
+    // absolute loudness at the note's partials (room noise when it is silent, never a placeholder):
+    // used to spot key strikes
+    lv.sort((a, b) => b - a); let level = 0;
+    const kk = Math.min(topK, lv.length); for (let i = 0; i < kk; i++) level += lv[i] / kk;
+    return { score: k ? sum / k : 0, strong: v.filter(x => x > 6).length, nh: v.length, level };
+  }
+
+  notePresent(m, chord) { return this.why(m, chord) === ''; }
+
+  // '' if note m is being played, otherwise the name of the first check that failed
+  why(m, chord) {
+    const o = this.o, { score, strong, nh } = this.noteScore(m), f0 = midiToHz(m);
+    if (score < (chord ? o.chordThr : o.onThr)) return 'weak';
+    if (strong < Math.min(2, nh)) return 'few-partials';
+    // played an octave above? then f, 3f and 5f are silent. Right notes measured odd >= score.
+    const odd = Math.max(this.snrAt(f0), this.snrAt(3 * f0, o.cents + 9), this.snrAt(5 * f0, o.cents + 15));
+    if (odd < (chord ? 0.6 * score : Math.min(o.oddThr, 0.9 * score)) && !(chord && this.expected.includes(m + 12))) return 'octave-above';
+    for (const nb of [m - 1, m + 1]) {
+      if (chord && this.expected.includes(nb)) continue;
+      if (score - this.noteScore(nb).score < (chord ? o.neighbourMargin / 2 : o.neighbourMargin)) return 'neighbour';
+    }
+    // played an octave below? then 1.5f, 2.5f and 3.5f (its 3rd, 5th and 7th partials) ring too.
+    // Not usable inside chords: a triad's own fifth and third sit exactly there.
+    // Measured: right notes almost never show 2 of these 3, the octave below shows all 3 (eval/diag_oct.mjs).
+    if (!chord && [1.5, 2.5, 3.5].filter((r, i) => this.snrAt(r * f0, o.cents + 9 + 6 * i) > o.lowerOctThr).length >= 2) return 'octave-below';
+    return '';
+  }
+
+  // which single note is sounding (for "you played X" hints)
+  guess() {
+    const { n } = this.o, buf = new Float32Array(n);
+    for (let i = 0; i < n; i++) buf[i] = this.ring[(this.w + i) % n];
+    const r = mpm(buf, this.sr);
+    return r.hz > 0 && r.clarity > 0.8 ? Math.round(12 * Math.log2(r.hz / 440) + 69) : null;
+  }
+}
+
+</script>
+<script>
+const NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+const SOL = ['Do', 'Do♯', 'Re', 'Re♯', 'Mi', 'Fa', 'Fa♯', 'Sol', 'Sol♯', 'La', 'La♯', 'Si'];
+const nm = m => NAMES[m % 12] + (Math.floor(m / 12) - 1);
+const label = notes => notes.length === 1 ? `${nm(notes[0])} · ${SOL[notes[0] % 12]}` : CHORD_NAMES[notes.join(',')] || notes.map(nm).join(' ');
+const CHORD_NAMES = { '60,64,67': 'C major', '60,65,69': 'F/C', '59,62,67': 'G/B', '60,64,69': 'A minor', '48,60,64,67': 'C, both hands', '41,60,65,69': 'F, both hands', '43,59,62,67': 'G, both hands', '60,63,67': 'C minor' };
+const SONGS = {
+  twinkle: { name: 'Twinkle Twinkle (first 2 lines)', notes: [60, 60, 67, 67, 69, 69, 67, 65, 65, 64, 64, 62, 62, 60] },
+  scale: { name: 'C major scale, up', notes: [60, 62, 64, 65, 67, 69, 71, 72] },
+  ode: { name: 'Ode to Joy (first line)', notes: [64, 64, 65, 67, 67, 65, 64, 62, 60, 60, 62, 64, 64, 62, 62] },
+  free: { name: 'Just listen (show every note)', notes: null },
+};
+const $ = id => document.getElementById(id);
+const LOW = 48, HIGH = 84;
+
+// ---------- keyboard ----------
+const keys = {};
+(function buildKb() {
+  const kb = $('kb'), isBlack = m => [1, 3, 6, 8, 10].includes(m % 12), whites = [];
+  for (let m = LOW; m <= HIGH; m++) if (!isBlack(m)) whites.push(m);
+  const w = 100 / whites.length;
+  whites.forEach(m => { const el = document.createElement('div'); el.className = 'wk'; el.textContent = m % 12 === 0 ? nm(m) : ''; kb.appendChild(el); keys[m] = el; });
+  for (let m = LOW; m <= HIGH; m++) if (isBlack(m)) {
+    const i = whites.indexOf(m - 1), el = document.createElement('div'); el.className = 'bk';
+    el.style.left = `calc(${(i + 1) * w}% - ${w * 0.32}%)`; el.style.width = `${w * 0.64}%`; kb.appendChild(el); keys[m] = el;
+  }
+})();
+const fold = m => { while (m < LOW) m += 12; while (m > HIGH) m -= 12; return m; };
+function showTarget(notes) { for (const k of Object.values(keys)) k.classList.remove('target'); (notes || []).forEach(m => keys[fold(m)]?.classList.add('target')); }
+function flash(notes, cls) { notes.forEach(m => { const k = keys[fold(m)]; if (!k) return; k.classList.add(cls); setTimeout(() => k.classList.remove(cls), 350); }); }
+
+// ---------- log ----------
+function log(text, cls = '', t = null) {
+  const li = document.createElement('li'); li.className = cls;
+  if (t !== null) { const tm = document.createElement('time'); tm.textContent = t.toFixed(1) + 's'; li.appendChild(tm); }
+  li.appendChild(document.createTextNode(text)); $('log').prepend(li);
+}
+
+// ---------- strike finder (for "wrong note" messages; the listener itself needs no help) ----------
+class Strikes {
+  constructor(sr) { this.sr = sr; this.hist = []; this.floor = null; this.last = -1; this.t = 0; this.acc = 0; this.n = 0; }
+  push(x) { // returns strike times (s)
+    const out = [];
+    for (let i = 0; i < x.length; i++) {
+      this.acc += x[i] * x[i]; this.n++; this.t++;
+      if (this.n === 256) {
+        const d = 10 * Math.log10(this.acc / 256 + 1e-12); this.acc = 0; this.n = 0;
+        this.floor = this.floor === null ? d : d < this.floor ? d : this.floor + 0.02;
+        const lo = this.hist.length ? Math.min(...this.hist) : d; this.hist.push(d); if (this.hist.length > 8) this.hist.shift();
+        const now = this.t / this.sr;
+        if (d - lo > 8 && d > this.floor + 15 && now - this.last > 0.12) { this.last = now; out.push(now); }
+        this.level = Math.max(0, Math.min(1, (d + 60) / 50));
+      }
+    }
+    return out;
+  }
+}
+
+// ---------- a test run: feed samples, follow targets in wait mode ----------
+let run = null;
+function startRun({ sr, targets, truth = null, title }) {
+  $('log').innerHTML = ''; $('scorecard').hidden = true;
+  const r = { L: new NoteListener(sr), S: new Strikes(sr), sr, targets, truth, i: 0, hits: [], pending: [], wrongHeard: 0, title, free: !targets };
+  if (!r.free) r.L.setExpected(targets[0]);
+  renderStrip(r); run = r; return r;
+}
+function renderStrip(r) {
+  const strip = $('strip'); strip.innerHTML = '';
+  if (r.free) { $('big').textContent = '♪'; $('sub').textContent = 'Listening for any note'; showTarget([]); return; }
+  r.targets.forEach((t, j) => { const c = document.createElement('span'); c.className = 'chip' + (j < r.i ? ' done' : j === r.i ? ' cur' : ''); c.textContent = t.length === 1 ? nm(t[0]) : (CHORD_NAMES[t.join(',')] || 'chord'); strip.appendChild(c); });
+  const cur = strip.children[Math.min(r.i, r.targets.length - 1)]; if (cur) strip.scrollTo({ left: cur.offsetLeft - strip.clientWidth / 2 });
+  if (r.i < r.targets.length) { $('big').textContent = label(r.targets[r.i]); $('sub').textContent = `Target ${r.i + 1} of ${r.targets.length}`; showTarget(r.targets[r.i]); }
+  else { $('big').textContent = 'Done ✓'; $('sub').textContent = 'Every target was heard'; showTarget([]); }
+}
+function feed(r, chunk) {
+  for (const e of r.L.process(chunk)) if (e.type === 'hit' && !r.free) {
+    const t = e.time, target = r.targets[r.i];
+    r.hits.push({ t, notes: target }); flash(target, 'hit');
+    let delay = '';
+    if (r.truth) { const s = [...r.truth].reverse().find(s => s.t <= t + 0.03); if (s && t - s.t < 0.4) { delay = ` · ${Math.round((t - s.t) * 1000)} ms after the key`; if (!s.ok) r.falseAccept = (r.falseAccept || 0) + 1; else (r.delays ||= []).push((t - s.t) * 1000); } }
+    log(`✓ ${label(target)}${delay}`, 'ok', t);
+    r.i++; renderStrip(r); if (r.i < r.targets.length) r.L.setExpected(r.targets[r.i]); else finish(r);
+  }
+  for (const st of r.S.push(chunk)) r.pending.push({ t: st, guess: undefined });
+  const now = r.L.time;
+  for (const p of r.pending) {
+    if (p.guess === undefined && now >= p.t + 0.08) p.guess = r.L.guess();
+    if (now >= p.t + 0.3 && !p.done) {
+      p.done = true;
+      if (r.free) { if (p.guess != null) { log(`♪ ${nm(p.guess)} · ${SOL[p.guess % 12]}`, '', p.t); flash([p.guess], 'hit'); } continue; }
+      const accepted = r.hits.some(h => h.t >= p.t - 0.06 && h.t <= p.t + 0.3);
+      if (!accepted && r.i < r.targets.length) {
+        r.wrongHeard++; const want = r.targets[r.i];
+        if (p.guess != null && want.length === 1 && p.guess !== want[0]) { log(`✗ Heard ${nm(p.guess)}, still waiting for ${nm(want[0])}`, 'bad', p.t); flash([p.guess], 'wrong'); }
+        else log(`✗ That wasn't ${label(want)}, still waiting`, 'bad', p.t);
+      }
+    }
+  }
+  r.pending = r.pending.filter(p => !p.done);
+  if (r.S.level !== undefined) $('lvl').style.width = (r.S.level * 100) + '%';
+}
+function finish(r, early = false) {
+  if (r.finished) return; r.finished = true;
+  if (r.stop) r.stop();
+  if (r.free) return;
+  $('scorecard').hidden = false;
+  $('sc-done').textContent = `${r.i}/${r.targets.length}`;
+  const d = (r.delays || []).sort((a, b) => a - b);
+  $('sc-delay').textContent = d.length ? Math.round(d[d.length >> 1]) + ' ms' : '–';
+  if (r.truth) {
+    const mistakes = r.truth.filter(s => !s.ok).length, fa = r.falseAccept || 0;
+    $('sc-wrong').textContent = `${mistakes - fa}/${mistakes}`; $('sc-false').textContent = String(fa);
+  } else { $('sc-wrong').textContent = r.wrongHeard ? String(r.wrongHeard) : '0'; $('sc-false').textContent = '?'; }
+  const v = $('verdict');
+  if (r.i === r.targets.length) v.textContent = r.truth ? 'Every target was heard, and every mistake was ignored.' : 'Every target was heard.';
+  else v.textContent = `Stopped at target ${r.i + 1} (${label(r.targets[r.i])}). ` + (r.title?.includes('TV') ? 'This is the known weak spot: chords while a TV is talking loudly. In the app she would simply play it again, and the app would suggest turning the TV down.' : 'The detector never heard it clearly. Try again closer to the speaker or in a quieter room.');
+}
+
+// ---------- source: decoded audio (demos and uploaded files) ----------
+let ctx = null;
+const getCtx = () => (ctx ||= new (window.AudioContext || window.webkitAudioContext)());
+function stopAll() { if (run && run.stop && !run.finished) { run.finished = true; run.stop(); } }
+async function runBuffer(buf, targets, truth, title, play = true) {
+  stopAll();
+  const c = getCtx(); await c.resume();
+  const x = buf.getChannelData(0), r = startRun({ sr: buf.sampleRate, targets, truth, title });
+  if (!play) { for (let p = 0; p < x.length && !r.finished; p += 128) feed(r, x.subarray(p, p + 128)); if (!r.finished) finish(r); return; }
+  const src = c.createBufferSource(); src.buffer = buf; src.connect(c.destination);
+  const t0 = c.currentTime + 0.05; src.start(t0); let pos = 0, raf = 0;
+  r.stop = () => { try { src.stop(); } catch (e) {} cancelAnimationFrame(raf); };
+  src.onended = () => { if (!r.finished) { while (pos < x.length) { feed(r, x.subarray(pos, pos + 128)); pos += 128; } finish(r); } };
+  const tick = () => {
+    const upTo = Math.min(x.length, Math.floor((c.currentTime - t0) * buf.sampleRate));
+    while (pos + 128 <= upTo && !r.finished) { feed(r, x.subarray(pos, pos + 128)); pos += 128; }
+    if (!r.finished) raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+}
+
+// ---------- demos ----------
+let DEMOS = [];
+fetch('demos.json').then(r => r.json()).then(list => {
+  DEMOS = list; const box = $('demos'); box.innerHTML = '';
+  list.forEach(d => {
+    const b = document.createElement('button'); b.className = 'demo';
+    b.innerHTML = `<span class="room"></span><b></b><small></small>`;
+    b.querySelector('.room').textContent = { quiet: 'Quiet room', fan: 'Fan on', tv: 'TV on' }[d.cond];
+    b.querySelector('b').textContent = d.title; b.querySelector('small').textContent = d.desc;
+    b.onclick = async () => {
+      $('sub').textContent = 'Loading…';
+      try { const ab = await (await fetch(d.file)).arrayBuffer(); const buf = await getCtx().decodeAudioData(ab); runBuffer(buf, d.targets, d.strikes, d.title); }
+      catch (e) { $('sub').textContent = 'Could not load this demo.'; }
+    };
+    box.appendChild(b);
+  });
+}).catch(() => { $('demos').innerHTML = '<p class="note">The demos load in the online version of the lab. "Your recording" and "Live mic" work here.</p>'; });
+
+// ---------- uploaded recording ----------
+for (const id of ['song-file', 'song-mic']) for (const [k, s] of Object.entries(SONGS)) { if (id === 'song-mic' && k === 'free') continue; const o = document.createElement('option'); o.value = k; o.textContent = s.name; $(id).appendChild(o); }
+$('song-file').value = 'free';
+$('run-file').onclick = async () => {
+  const f = $('file').files[0]; if (!f) { $('sub').textContent = 'Choose a recording first'; return; }
+  $('sub').textContent = 'Decoding…';
+  try { const buf = await getCtx().decodeAudioData(await f.arrayBuffer()); const s = SONGS[$('song-file').value]; runBuffer(buf, s.notes && s.notes.map(n => [n]), null, f.name, $('play-file').checked); }
+  catch (e) { $('sub').textContent = 'That file could not be read. Try an .m4a, .mp3 or .wav.'; }
+};
+
+// ---------- live mic ----------
+$('run-mic').onclick = async () => {
+  stopAll();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    const c = getCtx(); await c.resume();
+    const s = SONGS[$('song-mic').value], r = startRun({ sr: c.sampleRate, targets: s.notes.map(n => [n]), title: 'mic' });
+    const src = c.createMediaStreamSource(stream), proc = c.createScriptProcessor(1024, 1, 1);
+    proc.onaudioprocess = e => { if (!r.finished) { const x = e.inputBuffer.getChannelData(0); for (let p = 0; p < x.length; p += 128) feed(r, x.subarray(p, p + 128)); } };
+    src.connect(proc); proc.connect(c.destination);
+    r.stop = () => { proc.disconnect(); src.disconnect(); stream.getTracks().forEach(t => t.stop()); };
+    $('mic-note').textContent = 'Listening. Play the glowing note.';
+  } catch (e) {
+    $('mic-note').textContent = 'The microphone is blocked here (the Claude viewer does not allow it). Open the lab file in Chrome on your Mac to play live.';
+  }
+};
+
+// ---------- tabs ----------
+const TABS = { 't-demo': 'p-demo', 't-file': 'p-file', 't-mic': 'p-mic' };
+for (const [t, p] of Object.entries(TABS)) $(t).onclick = () => { for (const [t2, p2] of Object.entries(TABS)) { $(t2).setAttribute('aria-selected', String(t2 === t)); $(p2).hidden = t2 !== t; } };
+</script>

@@ -12,8 +12,8 @@ function demo(name, cond, strikes, targets, title, desc) {
   const len = Math.floor((Math.max(...strikes.map(s => s.t)) + 2) * SR), y = speakerAndRoom(render(events, len)), nz = CONDITIONS[cond](len);
   for (let i = 0; i < len; i++) y[i] = Math.max(-1, Math.min(1, y[i] + nz[i]));
   const raw = path.join(OUT, name + '.f32'); fs.writeFileSync(raw, Buffer.from(y.buffer));
-  execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'f32le', '-ar', String(SR), '-ac', '1', '-i', raw, '-b:a', '96k', path.join(OUT, name + '.mp3')]); fs.unlinkSync(raw);
-  return { name, cond, title, desc, file: name + '.mp3', targets, strikes: strikes.map(s => ({ t: +s.t.toFixed(3), notes: s.notes, ok: s.ok })) };
+  execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'f32le', '-ar', String(SR), '-ac', '1', '-i', raw, '-c:a', 'pcm_s16le', path.join(OUT, name + '.wav')]); fs.unlinkSync(raw);
+  return { name, cond, title, desc, file: name + '.wav', targets, strikes: strikes.map(s => ({ t: +s.t.toFixed(3), notes: s.notes, ok: s.ok })) };
 }
 const seqStrikes = (notes, gap, t0 = 1) => notes.map((n, i) => ({ t: t0 + i * gap, notes: [n], ok: true }));
 const demos = [];
@@ -34,7 +34,7 @@ demos.push(demo('twinkle-quiet', 'quiet', seqStrikes(T, 0.6), T.map(n => [n]), '
   const s = C.map((c, i) => ({ t: 1 + i * 1.6, notes: c[1], hold: 1.2, ok: true }));
   // one wrong chord: C minor played where C major is expected, then the fix
   s.splice(1, 0, { t: 0, notes: [60, 63, 67], hold: 1.0, ok: false }); s.forEach((x, i) => x.t = 1 + i * 1.6);
-  demos.push(demo('chords-tv', 'tv', s, C.map(c => c[1]), 'Chords with the TV on', 'Pop progression C, F, G, Am, then both hands. The 2nd chord is a mistake (C minor instead of C major), then the fix.'));
+  demos.push(demo('chords-tv', 'tv', s, C.map(c => c[1]), 'Chords with the TV on', 'C, F, G, Am, then both hands, with a mistake (C minor) after the first chord. This one shows the weak spot: with a loud TV, some chords are not recognized.'));
 }
 fs.writeFileSync(path.join(OUT, 'demos.json'), JSON.stringify(demos));
 console.log(demos.map(d => `${d.file}: ${d.strikes.length} strikes`).join('\n'));

@@ -66,7 +66,12 @@ export const DEFAULTS = {
   neighbourMargin: 6, // dB the expected note must beat its semitone neighbours by
   oddThr: 30,         // dB at f, 3f or 5f (right notes ~40, octave-above-played under 25)
   lowerOctThr: 8,     // dB at 1.5f, 2.5f, 3.5f (right notes ~0, octave-below-played median 23)
-  jumpDb: 8,          // a strike = the note's score rises this much within jumpMs
+  riseDb: 5,          // a strike = the note's partials rise this far above their loudest level
+  riseLookMs: 250,    //   over the last 250 ms
+  riseGapMs: 20,      //   (ignoring the most recent 20 ms, the attack itself)
+  releaseDb: 15,      // or: the level fell this far (key released) within the last 250 ms...
+  reriseDb: 10,       // ...and has risen this much again (key struck)
+  jumpDb: 8,          // new pitch: or a jump of this much within jumpMs
   jumpMs: 45,
   confirmHops: 3,
   driftCents: 12,     // single notes: the strongest partial must hold its pitch (voices glide, strings do not)
@@ -89,7 +94,9 @@ export class NoteListener {
   }
   setExpected(midis) {
     this.expected = [...midis].sort((a, b) => a - b);
-    this.st = { notes: new Map(this.expected.map(m => [m, { hist: [], fresh: -1e9, confirm: 0, hit: null }])), done: false };
+    // a repeat (same target as the note just accepted) can only be a new strike after a key release
+    const repeat = !!this.lastHit && this.lastHit.join() === this.expected.join();
+    this.st = { notes: new Map(this.expected.map(m => [m, { hist: [], fresh: -1e9, confirm: 0, hit: null }])), done: false, repeat };
   }
   get time() { return this.t / this.sr; }
 
@@ -122,10 +129,21 @@ export class NoteListener {
     const now = this.time * 1000, chord = this.expected.length > 1, o = this.o;
     for (const [m, ns] of s.notes) {
       if (ns.hit !== null) continue;
-      const { score } = this.noteScore(m), pos = this.lastF0;
-      ns.hist.push([now, score]); while (ns.hist.length && now - ns.hist[0][0] > o.jumpMs) ns.hist.shift();
-      const low = Math.min(...ns.hist.map(h => h[1]));
-      if (score - low >= o.jumpDb) ns.fresh = now;
+      // A strike = the note's partials get LOUDER than they have been at any point in the last quarter
+      // second. A fading note never does, even though it shimmers (detuned unison strings beat, so its
+      // level dips and recovers); a relative score was fooled by that and re-triggered held notes.
+      const { level } = this.noteScore(m), pos = this.lastF0;
+      let prevMax = -Infinity, older = false;
+      for (const [t, l] of ns.hist) if (now - t >= o.riseGapMs) { older = true; if (l > prevMax) prevMax = l; }
+      if (older && level - prevMax >= o.riseDb) ns.fresh = now;
+      // or, when the target repeats the note just played: the same key played again. The finger lifts first, so the sound drops sharply (key release)
+      // and then comes back. A held note only shimmers; its dips are much shallower than a release.
+      let dip = Infinity; for (const [, l] of ns.hist) if (l < dip) dip = l;
+      if (s.repeat && older && prevMax - dip >= o.releaseDb && level - dip >= o.reriseDb) ns.fresh = now;
+      // a new pitch cannot be confused with a held note, so a quick jump is also enough there
+      // (keeps soft notes audible when a TV raises the recent maximum)
+      if (!s.repeat) { let lo = Infinity; for (const [t, l] of ns.hist) if (now - t <= o.jumpMs && l < lo) lo = l; if (level - lo >= o.jumpDb) ns.fresh = now; }
+      ns.hist.push([now, level]); while (ns.hist.length && now - ns.hist[0][0] > o.riseLookMs) ns.hist.shift();
       let ok = now - ns.fresh <= o.freshMs && this.notePresent(m, chord);
       if (ok && !chord && ns.confirm > 0 && Math.abs(1200 * Math.log2(pos / ns.pos0)) > o.driftCents) ok = false;
       if (ok && ns.confirm === 0) ns.pos0 = pos;
@@ -136,7 +154,7 @@ export class NoteListener {
     if (chord) for (const ns of s.notes.values()) if (ns.hit !== null && now - ns.hit > o.chordWindowMs) { ns.hit = null; ns.confirm = 0; }
     const hits = [...s.notes.values()].map(x => x.hit);
     if (hits.every(h => h !== null)) {
-      s.done = true;
+      s.done = true; this.lastHit = this.expected.slice();
       out.push({ type: 'hit', notes: this.expected.slice(), time: now / 1000, onset: Math.min(...hits) / 1000 });
     }
   }
@@ -161,23 +179,37 @@ export class NoteListener {
         const dist = Math.abs(j - k); if (dist < 2 || db[j] <= peak) continue;
         const l = db[j] + this.leak[dist] + leakMargin; if (l > ref) ref = l;
       }
-      const v = peak - ref; if (v > best) { best = v; this.lastPos = k + off; }
+      const v = peak - ref; if (v > best) { best = v; this.lastPos = k + off; this.lastPeakDb = peak; }
     }
     return Math.min(60, best);
+  }
+
+  // loudest bin (dB) within +-cents of hz, whatever it contains
+  rawAt(hz, cents) {
+    const { n } = this.o, b = hz * n / this.sr;
+    if (b >= n / 2 - 2 || b < 1) return -120;
+    const tol = Math.max(b * (Math.pow(2, cents / 1200) - 1), 0.5);
+    let best = -1e9; for (let k = Math.max(1, Math.round(b - tol)); k <= Math.min(n / 2 - 2, Math.round(b + tol)); k++) if (this.db[k] > best) best = this.db[k];
+    return best;
   }
 
   noteScore(m) {
     const f0 = midiToHz(m), { harmonics, maxHz, cents, topK } = this.o, v = [];
     // piano strings are stiff, so upper partials run sharp: widen the window as h grows
-    let top = -1;
+    let top = -1; const lv = [];
     for (let h = 1; h <= harmonics && f0 * h < maxHz; h++) {
       this.lastPos = 0; const x = this.snrAt(f0 * h, cents + 3 * h); v.push(x);
+      lv.push(this.rawAt(f0 * h, cents + 3 * h));
       if (x > top && this.lastPos) { top = x; this.lastF0 = this.lastPos * this.sr / this.o.n / h; } // pitch implied by the strongest partial
     }
     v.sort((a, b) => b - a);
     const k = Math.min(topK, v.length);
     let sum = 0; for (let i = 0; i < k; i++) sum += v[i];
-    return { score: k ? sum / k : 0, strong: v.filter(x => x > 6).length, nh: v.length };
+    // absolute loudness at the note's partials (room noise when it is silent, never a placeholder):
+    // used to spot key strikes
+    lv.sort((a, b) => b - a); let level = 0;
+    const kk = Math.min(topK, lv.length); for (let i = 0; i < kk; i++) level += lv[i] / kk;
+    return { score: k ? sum / k : 0, strong: v.filter(x => x > 6).length, nh: v.length, level };
   }
 
   notePresent(m, chord) { return this.why(m, chord) === ''; }

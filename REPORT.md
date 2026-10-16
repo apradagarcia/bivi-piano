@@ -9,18 +9,21 @@
 | AudioWorklet | `web/processor.src.js` → `web/piano-listener.worklet.js` | Runs the listener on the audio thread, 128 samples at a time. Bundled into one classic script, so it doesn't rely on module imports in Safari worklets. |
 | Mic setup | `web/mic.js` | Opens the mic with echo cancellation, noise suppression and auto gain **off**, and connects it to the worklet. |
 | Test set | `eval/synth.mjs` | Builds the recording script's 7 takes from real grand piano samples (Salamander, Yamaha C5), with simulated small speakers, room echo and noise. |
-| Scorer | `eval/run.mjs` | Hit rate, wrong-note acceptance, false notes in silence, delay. |
+| Scorer | `eval/run.mjs` | Hit rate, wrong-note acceptance, held-note re-triggers, false notes in silence, delay. |
+| Listener Lab | `lab/` | A page that runs the detector on demo recordings, your own recordings, or the live mic. |
 | Importer | `eval/import-real.mjs` | Takes Bivi's Voice Memos files, finds every strike, labels it from the script, and checks the labels by pitch. |
 | Browser test | `web/browser-test.cjs` | Runs the real AudioWorklet in Chromium with a recording fed in as the mic. |
 
 ## Results (held-out set: scored once, after all tuning)
 The held-out takes use a different random seed, a smaller simulated speaker (200 Hz cutoff), more echo (0.5 s) and noise 4 dB louder than the takes used for tuning.
 
-| Room | Single notes (target 95%) | Chords (target 85%) | Wrong semitone accepted | Wrong octave accepted | Wrong chord accepted | Delay median / worst p90 (target <150 ms) |
-|---|---|---|---|---|---|---|
-| Quiet | **98.2%** (162/165) | **100%** (45/45) | 0.0% | 1.2% | 3.0% | 51 to 66 / 79 ms |
-| Fan on | **95.8%** (158/165) | **93.3%** (42/45) | 0.0% | 2.4% | 1.5% | 53 to 67 / 108 ms |
-| TV voice | 94.5% (156/165) | **86.7%** (39/45) | 0.6% | 4.8% | 11.5% | 52 to 65 / 120 ms |
+| Room | Single notes (target 95%) | Chords (target 85%) | Wrong semitone accepted | Wrong octave accepted | Wrong chord accepted | Held note re-triggers | Delay median / worst p90 (target <150 ms) |
+|---|---|---|---|---|---|---|---|
+| Quiet | **98.2%** (162/165) | **100%** (45/45) | 0.0% | 1.5% | 3.0% | 0.0% | 51 to 66 / 79 ms |
+| Fan on | **95.8%** (158/165) | **93.3%** (42/45) | 0.0% | 2.4% | 1.1% | 0.0% | 53 to 67 / 108 ms |
+| TV voice | **95.2%** (157/165) | **93.3%** (42/45) | 0.6% | 3.9% | 11.1% | 13.9% | 52 to 65 / 120 ms |
+
+"Held note re-triggers": the target is a note, it is accepted, and the next target is the same note (like Twinkle's C-C). Any accept before the key is pressed again counts as the app advancing on its own.
 
 - **Notes from C3 to C6** (where beginner and intermediate songs live): **97.2%** (411/423). Outside that range: 90.3% (the very top notes B6 and C7 are the weakest).
 - **False notes with nobody playing:** quiet room 0 per minute, fan + table taps 0 per minute, **loud TV voice 8 per minute**.
@@ -40,9 +43,11 @@ Delay is measured from the true key strike to when the app accepts the note. On 
 | 5 | TV voice triggered notes | Single notes must hold their pitch for about 10 ms (voices glide, strings don't) |
 | 6 | Chords about 50% | That pitch check is for single notes only; relaxed octave check in chords |
 | 7 | Playing an octave lower accepted up to 24% | Check 3 "in-between" harmonics instead of 2 |
+| 8 | Found in the Listener Lab: a held note could count as the next identical note | Strikes are detected from absolute loudness, a note must get louder than its last 250 ms, and a repeated note needs a key release first |
+| 9 | That made soft notes vanish under a TV | For a new pitch (no repeat risk) a quick jump also counts |
 
 ## Known weaknesses
-1. **TV or conversation nearby:** 8 false notes per minute and 11.5% wrong chords accepted. Plan: show "It's a bit noisy, can you turn the TV down?" when the app hears speech-like sound.
+1. **TV or conversation nearby:** 8 false notes per minute, 11% wrong chords accepted, and a held note can re-trigger a repeated target 14% of the time. Plan: show "It's a bit noisy, can you turn the TV down?" when the app hears speech-like sound.
 2. **Soft low-middle notes with a fan on** (C#3 to A#3): about 89%. Bivi's recordings will show whether this matters in her room.
 3. **Soft notes played an octave lower** with a fan on: accepted 13% to 16% of the time. Low impact (right note name, wrong octave).
 
