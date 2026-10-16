@@ -1,0 +1,9 @@
+<!doctype html><meta charset="utf-8"><title>worklet harness</title>
+<script type="module">
+import { startListening } from './mic.js';
+const seq = await (await fetch('seq.json')).json();   // [[midi...], ...] in playing order
+const log = []; let i = 0, mic;
+mic = await startListening(h => { log.push({ i, notes: h.notes, audioTime: h.time, t: performance.now() }); i++; if (i < seq.length) mic.expect(seq[i]); else window.DONE = true; });
+mic.expect(seq[0]);
+window.LOG = log; window.SR = mic.ctx.sampleRate;
+</script>

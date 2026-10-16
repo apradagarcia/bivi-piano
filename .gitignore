@@ -1,0 +1,9 @@
+# generated test audio and downloaded samples (rebuild with eval/synth.mjs)
+samples/
+takes*/
+fake_memos/
+web/*.wav
+*.f32
+r*.json
+heldout.json
+node_modules/
