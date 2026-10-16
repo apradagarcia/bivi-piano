@@ -237,18 +237,20 @@ function feed(r, chunk) {
     log(`✓ ${label(target)}${delay}`, 'ok', t);
     r.i++; renderStrip(r); if (r.i < r.targets.length) r.L.setExpected(r.targets[r.i]); else finish(r);
   }
-  for (const st of r.S.push(chunk)) r.pending.push({ t: st, guess: undefined });
+  for (const st of r.S.push(chunk)) r.pending.push({ t: st, g: [] });
   const now = r.L.time;
   for (const p of r.pending) {
-    if (p.guess === undefined && now >= p.t + 0.08) p.guess = r.L.guess();
+    // ask "which note?" three times; only a note that stays the same is a real key (a TV or voice wanders)
+    for (const dt of [0.08, 0.14, 0.2]) if (p.g.length < 3 && now >= p.t + dt && p.g.length === [0.08, 0.14, 0.2].indexOf(dt)) p.g.push(r.L.guess());
     if (now >= p.t + 0.3 && !p.done) {
       p.done = true;
-      if (r.free) { if (p.guess != null) { log(`♪ ${nm(p.guess)} · ${SOL[p.guess % 12]}`, '', p.t); flash([p.guess], 'hit'); } continue; }
+      const steady = p.g.length === 3 && p.g[0] != null && p.g.every(x => x === p.g[0]) ? p.g[0] : null;
+      if (r.free) { if (steady != null) { log(`♪ ${nm(steady)} · ${SOL[steady % 12]}`, '', p.t); flash([steady], 'hit'); } continue; }
       const accepted = r.hits.some(h => h.t >= p.t - 0.06 && h.t <= p.t + 0.3);
-      if (!accepted && r.i < r.targets.length) {
-        r.wrongHeard++; const want = r.targets[r.i];
-        if (p.guess != null && want.length === 1 && p.guess !== want[0]) { log(`✗ Heard ${nm(p.guess)}, still waiting for ${nm(want[0])}`, 'bad', p.t); flash([p.guess], 'wrong'); }
-        else log(`✗ That wasn't ${label(want)}, still waiting`, 'bad', p.t);
+      // stay quiet unless a clear, steady wrong note was played: background sounds are not her mistakes
+      if (!accepted && r.i < r.targets.length && steady != null) {
+        const want = r.targets[r.i];
+        if (want.length === 1 && steady !== want[0]) { r.wrongHeard++; log(`✗ Heard ${nm(steady)}, still waiting for ${nm(want[0])}`, 'bad', p.t); flash([steady], 'wrong'); }
       }
     }
   }
